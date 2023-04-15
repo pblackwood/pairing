@@ -52,7 +52,7 @@ class Pairing(val files: Files = Files()) {
         val last = if (chunks.size > 2) chunks[2] else ""
         val player = Player(playerList.size + 1, first, last)
         playerList.add(player)
-        files.appendPlayer("players.txt", player)
+        files.appendPlayer(player = player)
         listPlayers()
     }
 
@@ -60,7 +60,7 @@ class Pairing(val files: Files = Files()) {
         val id: Int = command.split(" +".toRegex())[1].toInt()
         val player = playerList.find { it.id == id }
         player?.status = "out"
-        files.writePlayers("players.txt", playerList)
+        files.writePlayers(players = playerList)
         listPlayers()
     }
 

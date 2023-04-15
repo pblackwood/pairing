@@ -4,10 +4,6 @@ import java.io.File
 
 class Files {
 
-//    fun readPlayers(): List<Player> {
-//        return readPlayers("players.txt")
-//    }
-
     fun readPlayers(fileName: String = "players.txt"): List<Player> {
         val players = mutableListOf<Player>()
         File("files", fileName).forEachLine {
@@ -18,10 +14,6 @@ class Files {
         }
         return players
     }
-
-//    fun appendPlayer(player: Player) {
-//        appendPlayer("players.txt", player)
-//    }
 
     fun appendPlayer(fileName: String = "players.txt", player: Player) {
         File("files", fileName).appendText("%s\n".format(player.toString()))
