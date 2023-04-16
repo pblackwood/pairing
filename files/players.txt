@@ -1,7 +1,7 @@
 1,Bob,Robertson,in
 2,Mary,Smith,in
-3,April,Showers,out
-4,May,Flowers,out
-10,Ann,Any,out
-11,bill,,in
-12,billy,thorpe,in
+3,April,Showers,in
+4,May,Flowers,in
+10,Ann,Any,in
+11,bill,,out
+12,billy,thorpe,out
