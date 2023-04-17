@@ -50,4 +50,20 @@ class Files {
         }
     }
 
+    fun readByes(fileName: String = "byes.txt"): List<Int> {
+        val rawList = File("files", fileName).readLines()
+        return if (rawList.isEmpty()) emptyList() else rawList.first().split(",").map { it.toInt() }.toList()
+    }
+
+    fun appendBye(fileName: String = "byes.txt", byeId: Int) {
+        val byes = readByes(fileName).toMutableList()
+        byes.add(byeId)
+        writeByes(fileName, byes)
+    }
+
+    fun writeByes(fileName: String = "byes.txt", byes: List<Int>) {
+        File("files", fileName).delete()
+        File("files", fileName).writeBytes(byes.joinToString(separator=",").toByteArray())
+    }
+
 }

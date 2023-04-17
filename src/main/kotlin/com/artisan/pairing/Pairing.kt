@@ -7,7 +7,7 @@ class Pairing(
     private val random: Random = Random.Default) {
     lateinit var playerList: MutableList<Player>
     lateinit var rounds: MutableList<Round>
-    var byeIds: MutableList<Int> = mutableListOf()
+    lateinit var byes: MutableList<Int>
 
     init {
         initLists()
@@ -16,6 +16,7 @@ class Pairing(
     private fun initLists() {
         playerList = files.readPlayers().toMutableList()
         rounds = files.readRounds().toMutableList()
+        byes = files.readByes().toMutableList()
     }
 
     companion object {
@@ -64,8 +65,14 @@ class Pairing(
     private fun removePlayer(command: String) {
         val id: Int = command.split(" +".toRegex())[1].toInt()
         val player = playerList.find { it.id == id }
-        player?.status = "out"
-        files.writePlayers(players = playerList)
+        if (player != null) {
+            player.status = "out"
+            files.writePlayers(players = playerList)
+            val byeIndex = byes.indexOf(player.id)
+            if (byeIndex >= 0) {
+                byes.removeAt(byeIndex)
+            }
+        }
         listPlayers()
     }
 
@@ -89,8 +96,16 @@ class Pairing(
     }
 
     private fun assignBye(round: Round): Int {
-        val byeIndex = random.nextInt(round.playerIds.size)
-        return round.playerIds[byeIndex]
+        val playerIdsAvailableForBye = round.playerIds.filter { !byes.contains(it) }
+        val byeId = if (playerIdsAvailableForBye.isEmpty()) {
+            byes.removeAt(0)
+        }
+        else {
+            playerIdsAvailableForBye[random.nextInt(playerIdsAvailableForBye.size)]
+        }
+        byes.add(byeId)
+        files.writeByes(byes = byes)
+        return byeId
     }
 
     private fun isOdd(n: Int): Boolean {

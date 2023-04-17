@@ -46,7 +46,8 @@ class PairingTest {
                 Player(9, "Amy", status = "out")
             )
             every { files.readPlayers("players.txt") } returns players.toMutableList()
-            every { files.readRounds("rounds.txt") } returns listOf()
+            every { files.readRounds("rounds.txt") } returns emptyList()
+            every { files.readByes("byes.txt") } returns emptyList()
             every { files.appendPlayer("players.txt", any()) } returns Unit
             every { files.writePlayers("players.txt", any()) } returns Unit
             pairing = Pairing(files)
@@ -154,6 +155,8 @@ class PairingTest {
 
         private lateinit var rounds: List<Round>
 
+        private lateinit var byes: List<Int>
+
         @BeforeEach
         fun setUp() {
             players = listOf(
@@ -164,13 +167,15 @@ class PairingTest {
                 Player(9, "Amy", status = "out")
             )
 
-            rounds = listOf(
-            )
+            rounds = emptyList()
+            byes = emptyList()
 
             every { files.readPlayers("players.txt") } returns players
             every { files.readRounds("rounds.txt") } returns rounds
             every { files.appendRound("rounds.txt", any()) } returns Unit
-            every { random.nextInt(any()) } returns 1
+            every { files.readByes("byes.txt") } returns byes
+            every { files.writeByes("byes.txt", any()) } returns Unit
+            every { files.writePlayers("players.txt", any()) } returns Unit
             pairing = Pairing(files, random)
         }
 
@@ -251,19 +256,72 @@ class PairingTest {
                     0,
                     3
                 ),
-                Arguments.of(
-                    "A bye should not go to the same player twice",
-                    "r",
-                    Round(1, listOf(2, 3, 4, 5, 10), 5),
-                    listOf(Player(10, "Peter", "Parker")),
-                    mutableListOf(
-                        Round(1, listOf(2, 3, 4, 5, 10), 5)
-                    ),
-                    1,
-                    0,
-                    3
-                ),
             )
+        }
+
+        @Test
+        fun`A bye should not go to the same player twice`() {
+            val myPlayers = players.toMutableList()
+            myPlayers.add(Player(6, "first", "last"))
+            every { files.readPlayers("players.txt") } returns myPlayers
+            val myRounds = rounds.toMutableList()
+            myRounds.add(Round(1, listOf(2, 3, 4, 5, 6), 5))
+            every { files.readRounds("rounds.txt") } returns myRounds
+            val myByes = emptyList<Int>().toMutableList()
+            every { files.readByes("byes.txt") } returns myByes
+
+            System.setIn(ByteArrayInputStream("r\nq\n".toByteArray()))
+            every { random.nextInt(5) } returns 3
+            pairing = Pairing(files, random)
+            pairing.inputLoop()
+            assertEquals(2, pairing.rounds.size)
+            assertEquals(5, pairing.rounds.last().byeId)
+            assertEquals(listOf(5), pairing.byes)
+
+            System.setIn(ByteArrayInputStream("r\nq\n".toByteArray()))
+            every { random.nextInt(4) } returns 3
+            pairing.inputLoop()
+            assertEquals(3, pairing.rounds.size)
+            assertEquals(6, pairing.rounds.last().byeId)
+            assertEquals(listOf(5, 6), pairing.byes)
+        }
+
+        @Test
+        fun`If all remaining players have had a bye, choose the oldest one and move oldest to newest`() {
+            val myPlayers = players.subList(0, 3).toMutableList()
+            every { files.readPlayers("players.txt") } returns myPlayers
+            val myRounds = rounds.toMutableList()
+            myRounds.add(Round(1, listOf(2, 3, 4), 3))
+            every { files.readRounds("rounds.txt") } returns myRounds
+            val myByes = mutableListOf(2, 3, 4)
+            every { files.readByes("byes.txt") } returns myByes
+
+            System.setIn(ByteArrayInputStream("r\nq\n".toByteArray()))
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(2, pairing.rounds.size)
+            assertEquals(2, pairing.rounds.last().byeId)
+            assertEquals(listOf(3, 4, 2), pairing.byes)
+        }
+
+        @Test
+        fun`Marking a player 'out' also means the player is removed from the bye list if present`() {
+            val myByes = mutableListOf(2, 3, 4)
+            every { files.readByes("byes.txt") } returns myByes
+            System.setIn(ByteArrayInputStream("d 3\nq\n".toByteArray()))
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(listOf(2, 4), pairing.byes)
+        }
+
+        @Test
+        fun`Marking a player 'out' has no effect on the bye list if not present`() {
+            val myByes = mutableListOf(2, 3, 4)
+            every { files.readByes("byes.txt") } returns myByes
+            System.setIn(ByteArrayInputStream("d 5\nq\n".toByteArray()))
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(listOf(2, 3, 4), pairing.byes)
         }
     }
 }

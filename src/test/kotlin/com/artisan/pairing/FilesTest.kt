@@ -98,4 +98,34 @@ class FilesTest {
         val retrievedRounds = files.readRounds("xyz.txt")
         assertEquals(expectedRounds, retrievedRounds)
     }
+
+    @Test
+    fun `it can read all the previous bye ids from a file`() {
+        File("files", "xyz.txt").appendText("6,7,10\n")
+        val byes = files.readByes("xyz.txt")
+        assertEquals(listOf(6, 7, 10), byes)
+    }
+
+    @Test
+    fun `it can append a bye id to a file`() {
+        File("files", "abc.txt").appendText("3\n")
+        files.appendBye("abc.txt", 12)
+        assertEquals("3,12", File("files", "abc.txt").readText())
+    }
+
+    @Test
+    fun `it can append a bye id to a blank file`() {
+        File("files", "abc.txt").createNewFile()
+        files.appendBye("abc.txt", 12)
+        assertEquals("12", File("files", "abc.txt").readText())
+    }
+
+    @Test
+    fun `a group of bye ids can be written and read from a file and get the same ones back`() {
+        val expectedByes = listOf(3, 9, 12)
+        files.writeByes("xyz.txt", expectedByes)
+        val retrievedByes = files.readByes("xyz.txt")
+        assertEquals(expectedByes, retrievedByes)
+    }
+
 }
