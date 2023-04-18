@@ -76,23 +76,26 @@ class Pairing(
         listPlayers()
     }
 
+    private fun listRound(round: Round) {
+        round.printRoundDetails(playerList)
+    }
+
     private fun listRounds() {
-        rounds.forEach {
-            val byePlayer: Player? = if (it.byeId == null) null else playerList.find { p -> p.id == it.byeId }
-            println("Round %d".format(it.id))
-            println("%s".format(if (byePlayer == null) "NO BYE" else "BYE: %s".format(byePlayer.fullName())))
+        rounds.forEach { r ->
+            r.printRoundDetails(playerList)
         }
     }
 
     private fun startRound() {
         val round = Round(
             id = rounds.size + 1,
-            playerIds = playerList.filter { it.status == "in" }.map { it.id },
+            playerIds = playerList.filter { it.status == "in" }.map { it.id }
         )
         round.byeId = if (isOdd(round.playerIds.size)) assignBye(round) else null
+        round.pairs = assignPairs(round)
         rounds.add(round)
         files.appendRound(round = round)
-        listRounds()
+        listRound(round)
     }
 
     private fun assignBye(round: Round): Int {
@@ -106,6 +109,17 @@ class Pairing(
         byes.add(byeId)
         files.writeByes(byes = byes)
         return byeId
+    }
+
+    private fun assignPairs(round: Round): List<Pair<Int, Int>> {
+        val players = round.playerIds.toMutableList()
+        val pairs = mutableListOf<Pair<Int, Int>>()
+        while (players.size > 0) {
+            val first = players.removeAt(0)
+            val second = players.removeAt(random.nextInt(players.size))
+            pairs.add(Pair(first, second))
+        }
+        return pairs
     }
 
     private fun isOdd(n: Int): Boolean {

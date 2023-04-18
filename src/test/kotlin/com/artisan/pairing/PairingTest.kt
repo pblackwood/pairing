@@ -7,6 +7,7 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -323,5 +324,40 @@ class PairingTest {
             pairing.inputLoop()
             assertEquals(listOf(2, 3, 4), pairing.byes)
         }
+
+        @Test
+        fun `Making a new round assigns pairs and all players are represented`() {
+            System.setIn(ByteArrayInputStream("r\nq\n".toByteArray()))
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(1, pairing.rounds.size)
+
+            val round = pairing.rounds.last()
+            assertEquals(2, round.pairs?.size)
+            val pairedIds = mutableSetOf<Int>()
+            round.pairs?.forEach {
+                pairedIds.add(it.first)
+                pairedIds.add(it.second)
+            }
+            assertEquals(4, pairedIds.size)
+        }
+
+        @Test
+        fun `The same two players are not paired twice if possible`() {
+            System.setIn(ByteArrayInputStream("r\nr\nq\n".toByteArray()))
+
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(2, pairing.rounds.size)
+
+            val round1 = pairing.rounds.first()
+            val round2 = pairing.rounds.last()
+            assertNotEquals(round1.pairs?.first(), round1.pairs?.last())
+            assertNotEquals(round1.pairs?.first(), round2.pairs?.first())
+            assertNotEquals(round1.pairs?.first(), round2.pairs?.last())
+            assertNotEquals(round1.pairs?.last(), round2.pairs?.first())
+            assertNotEquals(round1.pairs?.last(), round2.pairs?.last())
+        }
+
     }
 }

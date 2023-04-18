@@ -68,7 +68,7 @@ class FilesTest {
 
     @Test
     fun `it can read a round from a file`() {
-        File("files", "xyz.txt").appendText("1;5,6,7;10\n")
+        File("files", "xyz.txt").appendText("1;5,6,7;10;\n")
         val rounds = files.readRounds("xyz.txt")
         assertEquals(listOf(
             Round(1, listOf(5,6,7), 10)
@@ -77,11 +77,11 @@ class FilesTest {
 
     @Test
     fun `it can read multiple rounds from a file`() {
-        File("files", "xyz.txt").appendText("1;5,6,7;10\n2;;12\n3;7;\n")
+        File("files", "xyz.txt").appendText("1;5,6,7;10;\n2;;12;1,2|3,4\n3;7;;\n")
         val rounds = files.readRounds("xyz.txt")
         assertEquals(listOf(
             Round(1, listOf(5,6,7), 10),
-            Round(2, listOf(), 12),
+            Round(2, listOf(), 12, listOf(Pair(1,2), Pair(3,4))),
             Round(3, listOf(7), null)
         ), rounds)
     }
@@ -89,10 +89,10 @@ class FilesTest {
     @Test
     fun `a group of Rounds can be written and read from a file and get the same Rounds back`() {
         val expectedRounds = listOf(
-            Round(1, listOf(3, 4, 5), 2),
+            Round(1, listOf(3, 4, 5), 2, listOf(Pair(4,5), Pair(6,7), Pair(8,9))),
             Round(2, listOf(), 2),
-            Round(3, listOf(3, 4, 5), null),
-            Round(4, listOf(), null),
+            Round(3, listOf(3, 4, 5), pairs = listOf(Pair(4,5))),
+            Round(4, listOf()),
         )
         files.writeRounds("xyz.txt", expectedRounds)
         val retrievedRounds = files.readRounds("xyz.txt")

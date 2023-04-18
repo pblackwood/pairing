@@ -30,10 +30,11 @@ class Files {
         val rounds = mutableListOf<Round>()
         File("files", fileName).forEachLine {
             val chunks = it.split(";")
-            if (chunks.size == 3) {
+            if (chunks.size == 4) {
                 val playerIds = if (chunks[1].isNotEmpty()) chunks[1].split(",").map { p -> p.toInt() }.toList() else listOf()
                 val byeId = if (chunks[2].isNotEmpty()) chunks[2].toInt() else null
-                rounds.add(Round(chunks[0].toInt(), playerIds, byeId))
+                val pairs = if (chunks[3].isNotEmpty()) chunks[3].split("|").map { p -> Pair(p.split(",")[0].toInt(), p.split(",")[1].toInt()) }.toList() else listOf()
+                rounds.add(Round(chunks[0].toInt(), playerIds, byeId, pairs))
             }
         }
         return rounds
