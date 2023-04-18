@@ -112,14 +112,28 @@ class Pairing(
     }
 
     private fun assignPairs(round: Round): List<Pair<Int, Int>> {
-        val players = round.playerIds.toMutableList()
+        val playerIds = round.playerIds.toMutableList()
         val pairs = mutableListOf<Pair<Int, Int>>()
-        while (players.size > 0) {
-            val first = players.removeAt(0)
-            val second = players.removeAt(random.nextInt(players.size))
-            pairs.add(Pair(first, second))
+        while (playerIds.size > 1) {
+            val firstPlayerId = playerIds.removeAt(random.nextInt(playerIds.size))
+            val firstPlayer: Player = playerList.find { it.id == firstPlayerId }!!
+            val secondPlayerId = findPairFor(firstPlayer, playerIds)
+            val secondPlayer: Player = playerList.find { it.id == secondPlayerId }!!
+            playerIds.remove(secondPlayerId)
+            firstPlayer.pairs.add(secondPlayerId)
+            secondPlayer.pairs.add(firstPlayerId)
+            pairs.add(Pair(firstPlayerId, secondPlayerId))
         }
         return pairs
+    }
+
+    private fun findPairFor(player: Player, availablePlayerIds: List<Int>): Int {
+        val availablePairIds = availablePlayerIds.filter { pId -> !player.pairs.contains(pId) }
+        return when (availablePairIds.size) {
+            0 -> availablePlayerIds.first()
+            1 -> availablePairIds.first()
+            else -> availablePairIds[random.nextInt(availablePairIds.size)]
+        }
     }
 
     private fun isOdd(n: Int): Boolean {

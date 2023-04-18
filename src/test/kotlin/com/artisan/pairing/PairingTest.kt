@@ -7,7 +7,7 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -344,20 +344,49 @@ class PairingTest {
 
         @Test
         fun `The same two players are not paired twice if possible`() {
-            System.setIn(ByteArrayInputStream("r\nr\nq\n".toByteArray()))
+            val myPlayers: MutableList<Player> = mutableListOf()
+            myPlayers.addAll(players)
+            myPlayers.add(Player(6, "Joe", "McGray"))
+            myPlayers.add(Player(7, "Marie", "Antionette"))
+            every { files.readPlayers("players.txt") } returns myPlayers
 
+            System.setIn(ByteArrayInputStream("r\nr\nr\nr\nr\nr\nq\n".toByteArray()))
             pairing = Pairing(files)
             pairing.inputLoop()
-            assertEquals(2, pairing.rounds.size)
-
-            val round1 = pairing.rounds.first()
-            val round2 = pairing.rounds.last()
-            assertNotEquals(round1.pairs?.first(), round1.pairs?.last())
-            assertNotEquals(round1.pairs?.first(), round2.pairs?.first())
-            assertNotEquals(round1.pairs?.first(), round2.pairs?.last())
-            assertNotEquals(round1.pairs?.last(), round2.pairs?.first())
-            assertNotEquals(round1.pairs?.last(), round2.pairs?.last())
+            assertEquals(6, pairing.rounds.size)
+            var totalUniquePairs: MutableSet<Pair<Int, Int>>
+            var uniquePairs: MutableSet<Pair<Int, Int>>
+            pairing.rounds.forEach { r ->
+                uniquePairs = createUniquePairs(pairing.rounds[0])
+                println("Number of unique pairs, round 1: %d".format(uniquePairs.size))
+                assertTrue(uniquePairs.size == 3)
+            }
+            totalUniquePairs = createUniquePairsAllRounds(pairing)
+            println("Number of total unique pairs: %d".format(totalUniquePairs.size))
+            assertTrue(totalUniquePairs.size <= 15)
+//            uniquePairs.forEach { println(it) }
         }
 
+        private fun createUniquePairsAllRounds(pairing: Pairing): MutableSet<Pair<Int, Int>> {
+            val uniquePairs = mutableSetOf<Pair<Int, Int>>()
+            pairing.rounds.forEach { r ->
+                r.pairs?.forEach { p ->
+                    val pAsList = p.toList().toMutableList()
+                    pAsList.sort()
+                    uniquePairs.add(Pair(pAsList[0], pAsList[1]))
+                }
+            }
+            return uniquePairs
+        }
+
+        private fun createUniquePairs(round: Round): MutableSet<Pair<Int, Int>> {
+            val uniquePairs = mutableSetOf<Pair<Int, Int>>()
+            round.pairs?.forEach { p ->
+                val pAsList = p.toList().toMutableList()
+                pAsList.sort()
+                uniquePairs.add(Pair(pAsList[0], pAsList[1]))
+            }
+            return uniquePairs
+        }
     }
 }

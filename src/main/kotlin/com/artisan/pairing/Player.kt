@@ -5,7 +5,7 @@ data class Player(
     val first: String,
     val last: String = "",
     var status: String = "in",
-    val pairs: List<Int> = listOf()
+    val pairs: MutableList<Int> = mutableListOf()
 ) {
     override fun toString(): String = "%d,%s,%s,%s".format(id, first, last, status)
 
