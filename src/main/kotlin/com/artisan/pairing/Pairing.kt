@@ -35,6 +35,7 @@ class Pairing(
                 'l' -> listPlayers()
                 'a' -> addPlayer(command)
                 'd' -> removePlayer(command)
+                'b' -> reinstatePlayer(command)
                 'r' -> startRound()
                 'q' -> waiting = false
             }
@@ -76,6 +77,16 @@ class Pairing(
         listPlayers()
     }
 
+    private fun reinstatePlayer(command: String) {
+        val id: Int = command.split(" +".toRegex())[1].toInt()
+        val player = playerList.find { it.id == id }
+        if (player != null) {
+            player.status = "in"
+            files.writePlayers(players = playerList)
+        }
+        listPlayers()
+    }
+
     private fun listRound(round: Round) {
         round.printRoundDetails(playerList)
     }
@@ -112,7 +123,7 @@ class Pairing(
     }
 
     private fun assignPairs(round: Round): List<Pair<Int, Int>> {
-        val playerIds = round.playerIds.toMutableList()
+        val playerIds = round.playerIds.filter { it != round.byeId }.toMutableList()
         val pairs = mutableListOf<Pair<Int, Int>>()
         while (playerIds.size > 1) {
             val firstPlayerId = playerIds.removeAt(random.nextInt(playerIds.size))

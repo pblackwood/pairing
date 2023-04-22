@@ -5,18 +5,10 @@ import io.mockk.every
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Nested
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.TestInstance
+import org.junit.jupiter.api.*
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.extension.ExtendWith
-import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
-import org.junit.jupiter.params.provider.MethodSource
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -25,9 +17,51 @@ import kotlin.random.Random
 
 @ExtendWith(MockKExtension::class)
 class PairingTest {
+    lateinit var pairing: Pairing
+
+    @MockK
+    lateinit var files: Files
+
+    @MockK
+    lateinit var random: Random.Default
+
+    private lateinit var players: List<Player>
+
+    private lateinit var rounds: List<Round>
+
+    private lateinit var byes: List<Int>
 
     private val standardIn = System.`in`
+
     private val standardOut = System.out
+
+    @BeforeEach
+    fun setUp() {
+        players = listOf(
+            Player(2, "Bob", "Robertson"),
+            Player(3, "Bill", "Carpenter"),
+            Player(4, "Mary", "Smith"),
+            Player(5, "Betty", "Smythe"),
+            Player(9, "Amy", status = "out")
+        )
+
+        rounds = emptyList()
+        byes = emptyList()
+
+        every { files.readPlayers("players.txt") } returns players
+        every { files.readRounds("rounds.txt") } returns rounds
+        every { files.appendRound("rounds.txt", any()) } returns Unit
+        every { files.readByes("byes.txt") } returns byes
+        every { files.writeByes("byes.txt", any()) } returns Unit
+        every { files.writePlayers("players.txt", any()) } returns Unit
+    }
+
+    @AfterEach
+    fun tearDown() {
+        System.setIn(standardIn)
+        System.setOut(standardOut)
+        clearAllMocks()
+    }
 
     @Nested
     @DisplayName("Adding and Removing Players")
@@ -51,7 +85,6 @@ class PairingTest {
             every { files.readByes("byes.txt") } returns emptyList()
             every { files.appendPlayer("players.txt", any()) } returns Unit
             every { files.writePlayers("players.txt", any()) } returns Unit
-            pairing = Pairing(files)
         }
 
         @AfterEach
@@ -63,6 +96,7 @@ class PairingTest {
 
         @Test
         fun `on load, reads player list from a file`() {
+            pairing = Pairing(files)
             verify {
                 files.readPlayers("players.txt")
                 assertEquals(players, pairing.playerList)
@@ -76,6 +110,7 @@ class PairingTest {
             val commandWithQuit = "l\nq\n"
             val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
             System.setIn(inputStream)
+            pairing = Pairing(files)
             pairing.inputLoop()
             assertEquals(
                 """
@@ -89,54 +124,40 @@ class PairingTest {
             )
         }
 
-        @ParameterizedTest(name = "{0}")
-        @MethodSource("playerCommands")
-        fun `Test player-oriented commands`(
-            name: String,
-            command: String,
-            player: Player?,
-            expectedPlayerList: List<Player>,
-            appendPlayerTimes: Int,
-            writePlayersTimes: Int
-        ) {
-            val commandWithQuit = "%s\nq\n".format(command)
+        @Test
+        fun `Can add a player to the list`() {
+            val commandWithQuit = "a Kent Beck\nq\n"
             val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
             System.setIn(inputStream)
+            pairing = Pairing(files)
             pairing.inputLoop()
+            val player = Player(3, "Kent", "Beck")
+            val expectedPlayerList = listOf(
+                Player(32, "Bob", "Robertson", "in"),
+                Player(9, "Amy", status = "out"),
+                Player(3, "Kent", "Beck")
+            )
             verify { files.readPlayers("players.txt") }
-            if (player != null) {
-                verify(exactly = appendPlayerTimes) { files.appendPlayer("players.txt", player) }
-            }
-            verify(exactly = writePlayersTimes) { files.writePlayers("players.txt", expectedPlayerList) }
+            verify(exactly = 1) { files.appendPlayer("players.txt", player) }
+            verify(exactly = 0) { files.writePlayers("players.txt", expectedPlayerList) }
             assertEquals(expectedPlayerList, pairing.playerList)
         }
 
-        private fun playerCommands(): Stream<Arguments> {
-            return Stream.of(
-                Arguments.of(
-                    "Can add a player to the list",
-                    "a Kent Beck",
-                    Player(3, "Kent", "Beck"),
-                    mutableListOf(
-                        Player(32, "Bob", "Robertson", "in"),
-                        Player(9, "Amy", status = "out"),
-                        Player(3, "Kent", "Beck")
-                    ),
-                    1,
-                    0
-                ),
-                Arguments.of(
-                    "Can mark a player 'out'",
-                    "d 32",
-                    null,
-                    mutableListOf(
-                        Player(32, "Bob", "Robertson", "out"),
-                        Player(9, "Amy", status = "out")
-                    ),
-                    0,
-                    1
-                ),
+        @Test
+        fun `Can mark a player 'out'`() {
+            val commandWithQuit = "d 32\nq\n"
+            val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
+            System.setIn(inputStream)
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            val expectedPlayerList = listOf(
+                Player(32, "Bob", "Robertson", "out"),
+                Player(9, "Amy", status = "out"),
             )
+            verify { files.readPlayers("players.txt") }
+            verify(exactly = 0) { files.appendPlayer("players.txt", any()) }
+            verify(exactly = 1) { files.writePlayers("players.txt", expectedPlayerList) }
+            assertEquals(expectedPlayerList, pairing.playerList)
         }
     }
 
@@ -144,120 +165,63 @@ class PairingTest {
     @DisplayName("Creating and Changing Rounds")
     @TestInstance(TestInstance.Lifecycle.PER_CLASS)
     inner class RoundTests {
-        lateinit var pairing: Pairing
-
-        @MockK
-        lateinit var files: Files
-
-        @MockK
-        lateinit var random: Random.Default
-
-        private lateinit var players: List<Player>
-
-        private lateinit var rounds: List<Round>
-
-        private lateinit var byes: List<Int>
-
-        @BeforeEach
-        fun setUp() {
-            players = listOf(
-                Player(2, "Bob", "Robertson"),
-                Player(3, "Bill", "Carpenter"),
-                Player(4, "Mary", "Smith"),
-                Player(5, "Betty", "Smythe"),
-                Player(9, "Amy", status = "out")
-            )
-
-            rounds = emptyList()
-            byes = emptyList()
-
-            every { files.readPlayers("players.txt") } returns players
-            every { files.readRounds("rounds.txt") } returns rounds
-            every { files.appendRound("rounds.txt", any()) } returns Unit
-            every { files.readByes("byes.txt") } returns byes
-            every { files.writeByes("byes.txt", any()) } returns Unit
-            every { files.writePlayers("players.txt", any()) } returns Unit
-            pairing = Pairing(files, random)
-        }
-
-        @AfterEach
-        fun tearDown() {
-            System.setIn(standardIn)
-            System.setOut(standardOut)
-            clearAllMocks()
-        }
-
-        @ParameterizedTest(name = "{0}")
-        @MethodSource("roundCommands")
-        fun `Test round-oriented commands`(
-            name: String,
-            command: String,
-            round: Round?,
-            extraPlayers: List<Player>?,
-            expectedRoundList: List<Round>,
-            appendRoundTimes: Int,
-            writeRoundsTimes: Int,
-            randomNumber: Int?,
-        ) {
-            val commandWithQuit = "%s\nq\n".format(command)
-            val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
-            System.setIn(inputStream)
-            if (extraPlayers != null) {
-                val newPlayerList = players.toMutableList()
-                newPlayerList.addAll(extraPlayers)
-                every { files.readPlayers("players.txt") } returns newPlayerList
-            }
-            every { random.nextInt(any()) } returns (randomNumber ?: 1)
+        @Test
+        fun `Can start a new round`() {
+            val expectedRound = Round(1, listOf(2, 3, 4, 5), null, listOf(
+                Pair(4, 3),
+                Pair(2, 5)
+            ))
+            val expectedRoundList = mutableListOf(expectedRound)
+            val commandWithQuit = "r\nq\n"
+            System.setIn(ByteArrayInputStream(commandWithQuit.toByteArray()))
+            every { random.nextInt(4) } returns 2
+            every { random.nextInt(3) } returns 1
+            every { random.nextInt(2) } returns 0
             pairing = Pairing(files, random)
             pairing.inputLoop()
             verify { files.readRounds("rounds.txt") }
             assertEquals(expectedRoundList, pairing.rounds)
-            if (round != null) {
-                verify(exactly = appendRoundTimes) { files.appendRound("rounds.txt", round = round) }
-            }
-            verify(exactly = writeRoundsTimes) { files.writeRounds("rounds.txt", expectedRoundList) }
+            verify(exactly = 1) { files.appendRound("rounds.txt", round = expectedRound) }
+            verify(exactly = 0) { files.writeRounds("rounds.txt", expectedRoundList) }
             assertEquals(expectedRoundList, pairing.rounds)
         }
 
-        private fun roundCommands(): Stream<Arguments> {
-            return Stream.of(
-                Arguments.of(
-                    "Can start a new round",
-                    "r",
-                    Round(1, listOf(2, 3, 4, 5)),
-                    null,
-                    mutableListOf(
-                        Round(1, listOf(2, 3, 4, 5))
-                    ),
-                    1,
-                    0,
-                    null
-                ),
-                Arguments.of(
-                    "With an even number of players, there should not be a bye",
-                    "r",
-                    Round(1, listOf(2, 3, 4, 5)),
-                    null,
-                    mutableListOf(
-                        Round(1, listOf(2, 3, 4, 5), null)
-                    ),
-                    1,
-                    0,
-                    null
-                ),
-                Arguments.of(
-                    "With an odd number of players, there should be a bye",
-                    "r",
-                    Round(1, listOf(2, 3, 4, 5, 10), 5),
-                    listOf(Player(10, "Peter", "Parker")),
-                    mutableListOf(
-                        Round(1, listOf(2, 3, 4, 5, 10), 5)
-                    ),
-                    1,
-                    0,
-                    3
-                ),
-            )
+        @Test
+        fun `With an even number of players, there should not be a bye`() {
+            val expectedRound = Round(1, listOf(2, 3, 4, 5), null, listOf(
+                Pair(4, 3),
+                Pair(2, 5)
+            ))
+            val commandWithQuit = "r\nq\n"
+            System.setIn(ByteArrayInputStream(commandWithQuit.toByteArray()))
+            every { random.nextInt(4) } returns 2
+            every { random.nextInt(3) } returns 1
+            every { random.nextInt(2) } returns 0
+            pairing = Pairing(files, random)
+            pairing.inputLoop()
+            verify(exactly = 0) { files.writeByes("byes.txt", any() ) }
+            assertEquals(expectedRound, pairing.rounds.last())
+        }
+
+        @Test
+        fun `With an odd number of players, there should be a bye`() {
+            val myPlayers = players.toMutableList()
+            myPlayers.add(Player(6, "first", "last"))
+            every { files.readPlayers("players.txt") } returns myPlayers
+            val expectedRound = Round(1, listOf(2, 3, 4, 5, 6), 5, listOf(
+                Pair(4, 3),
+                Pair(2, 6)
+            ))
+            val commandWithQuit = "r\nq\n"
+            System.setIn(ByteArrayInputStream(commandWithQuit.toByteArray()))
+            every { random.nextInt(5) } returns 3
+            every { random.nextInt(4) } returns 2
+            every { random.nextInt(3) } returns 1
+            every { random.nextInt(2) } returns 0
+            pairing = Pairing(files, random)
+            pairing.inputLoop()
+            verify { files.writeByes("byes.txt", any() ) }
+            assertEquals(expectedRound, pairing.rounds.last())
         }
 
         @Test
@@ -273,18 +237,24 @@ class PairingTest {
 
             System.setIn(ByteArrayInputStream("r\nq\n".toByteArray()))
             every { random.nextInt(5) } returns 3
+            every { random.nextInt(4) } returns 2
+            every { random.nextInt(3) } returns 1
+            every { random.nextInt(2) } returns 0
             pairing = Pairing(files, random)
             pairing.inputLoop()
             assertEquals(2, pairing.rounds.size)
             assertEquals(5, pairing.rounds.last().byeId)
             assertEquals(listOf(5), pairing.byes)
+            verify { random.nextInt(5) }
+            verify { random.nextInt(4) }
+            verify { random.nextInt(3) }
+            verify { random.nextInt(2) }
 
             System.setIn(ByteArrayInputStream("r\nq\n".toByteArray()))
-            every { random.nextInt(4) } returns 3
             pairing.inputLoop()
             assertEquals(3, pairing.rounds.size)
-            assertEquals(6, pairing.rounds.last().byeId)
-            assertEquals(listOf(5, 6), pairing.byes)
+            assertEquals(4, pairing.rounds.last().byeId)
+            assertEquals(listOf(5, 4), pairing.byes)
         }
 
         @Test
@@ -354,17 +324,36 @@ class PairingTest {
             pairing = Pairing(files)
             pairing.inputLoop()
             assertEquals(6, pairing.rounds.size)
-            var totalUniquePairs: MutableSet<Pair<Int, Int>>
+            val totalUniquePairs: MutableSet<Pair<Int, Int>> = createUniquePairsAllRounds(pairing)
             var uniquePairs: MutableSet<Pair<Int, Int>>
             pairing.rounds.forEach { r ->
                 uniquePairs = createUniquePairs(pairing.rounds[0])
                 println("Number of unique pairs, round 1: %d".format(uniquePairs.size))
                 assertTrue(uniquePairs.size == 3)
             }
-            totalUniquePairs = createUniquePairsAllRounds(pairing)
             println("Number of total unique pairs: %d".format(totalUniquePairs.size))
             assertTrue(totalUniquePairs.size <= 15)
-//            uniquePairs.forEach { println(it) }
+        }
+
+        @Test
+        fun `If a player has a bye, they cannot be paired`() {
+            val myPlayers: MutableList<Player> = mutableListOf()
+            myPlayers.addAll(players)
+            myPlayers.add(Player(6, "Joe", "McGray"))
+            every { files.readPlayers("players.txt") } returns myPlayers
+
+            every { random.nextInt(5) } returns 3
+            every { random.nextInt(4) } returns 2
+            every { random.nextInt(3) } returns 1
+            every { random.nextInt(2) } returns 0
+
+            System.setIn(ByteArrayInputStream("r\nq\n".toByteArray()))
+            pairing = Pairing(files, random)
+            pairing.inputLoop()
+
+            assertEquals(5, pairing.rounds.last().byeId)
+            val pairIds: Set<Int> = returnUniquePairIds(pairing.rounds.last())
+            assertNull(pairIds.find { it == 5 })
         }
 
         private fun createUniquePairsAllRounds(pairing: Pairing): MutableSet<Pair<Int, Int>> {
@@ -387,6 +376,37 @@ class PairingTest {
                 uniquePairs.add(Pair(pAsList[0], pAsList[1]))
             }
             return uniquePairs
+        }
+
+        private fun returnUniquePairIds(round: Round): Set<Int> {
+            val uniquePairIds = mutableSetOf<Int>()
+            round.pairs?.forEach { p ->
+                uniquePairIds.add(p.first)
+                uniquePairIds.add(p.second)
+            }
+            return uniquePairIds
+        }
+    }
+
+    @Nested
+    @DisplayName("Chip Counts and Buy-backs")
+    @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+    inner class MoneyTests {
+        @Test
+        fun `A player can buy back in`() {
+            val commandWithQuit = "b 9\nq\n"
+            val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
+            System.setIn(inputStream)
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            val expectedPlayerList = listOf(
+                Player(2, "Bob", "Robertson"),
+                Player(3, "Bill", "Carpenter"),
+                Player(4, "Mary", "Smith"),
+                Player(5, "Betty", "Smythe"),
+                Player(9, "Amy", status = "in")
+            )
+            assertEquals(expectedPlayerList, pairing.playerList)
         }
     }
 }
