@@ -1,11 +1,10 @@
 package com.artisan.pairing
 
+import java.io.File
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
-
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.io.File
 
 class FilesTest {
 
@@ -24,46 +23,58 @@ class FilesTest {
 
     @Test
     fun `it can read a player from a file`() {
-        File("files", "abc.txt").appendText("3,four,,in\n")
+        File("files", "abc.txt").appendText("3;four;;in;;10\n")
         val players = files.readPlayers("abc.txt")
         assertEquals(listOf(Player(3, "four")), players)
     }
 
     @Test
     fun `it can read multiple players from a file`() {
-        File("files", "abc.txt").appendText("3,four,,in\n5,six,seven,out\n")
+        File("files", "abc.txt").appendText("3;four;;in;;25\n5;six;seven;out;4,5;0\n")
         val players = files.readPlayers("abc.txt")
         assertEquals(listOf(
-            Player(3, "four"),
-            Player(5, "six", "seven", "out")
+            Player(3, "four", chipCount = 25),
+            Player(5, "six", "seven", "out", pairs = mutableListOf(4, 5), chipCount = 0)
         ), players)
     }
 
     @Test
     fun `it can read a file with a blank line`() {
-        File("files", "abc.txt").appendText("3,four,,in\n\n5,six,seven,out\n")
+        File("files", "abc.txt").appendText("3;four;;in;;10\n\n5;six;seven;out;;20\n")
         val players = files.readPlayers("abc.txt")
         assertEquals(listOf(
             Player(3, "four"),
-            Player(5, "six", "seven", "out")
+            Player(5, "six", "seven", "out", chipCount=20)
         ), players)
     }
 
     @Test
     fun `it can append a player to a file`() {
-        File("files", "abc.txt").appendText("3,four,,in\n")
-        files.appendPlayer("abc.txt", Player(1, "two", "three", "four"))
-        assertEquals("3,four,,in\n1,two,three,four\n", File("files", "abc.txt").readText())
+        File("files", "abc.txt").appendText("3;four;;in;;10\n")
+        files.appendPlayer("abc.txt", Player(1, "two", "three", "four", mutableListOf(4)))
+        assertEquals("3;four;;in;;10\n1;two;three;four;4;10\n", File("files", "abc.txt").readText())
     }
 
     @Test
-    fun `it can write multiple players to a file, starting with a new file`() {
-        File("files", "abc.txt").appendText("3,four,,in\n")
+    fun `it can write multiple players to a file, wiping out previous contents`() {
+        File("files", "abc.txt").appendText("3;four;;in;20\n")
         files.writePlayers("abc.txt", listOf(
             Player(1, "two", "three", "four"),
             Player(5, "six")
         ))
-        assertEquals("1,two,three,four\n5,six,,in\n", File("files", "abc.txt").readText())
+        assertEquals("1;two;three;four;;10\n5;six;;in;;10\n", File("files", "abc.txt").readText())
+    }
+
+    @Test
+    fun `a group of Players can be written and read from a file and get the same Players back`() {
+        val expectedPlayers = listOf(
+            Player(3, "four", chipCount = 25),
+            Player(5, "six", "seven", "out", pairs = mutableListOf(4, 5), chipCount = 0),
+            Player(6, "Mary", pairs = mutableListOf(6, 7))
+        )
+        files.writePlayers("xyz.txt", expectedPlayers)
+        val retrievedPlayers = files.readPlayers("xyz.txt")
+        assertEquals(expectedPlayers, retrievedPlayers)
     }
 
     @Test

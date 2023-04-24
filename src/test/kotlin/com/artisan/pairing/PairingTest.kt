@@ -5,15 +5,20 @@ import io.mockk.every
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
-import org.junit.jupiter.api.*
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.extension.ExtendWith
-import org.junit.jupiter.params.provider.Arguments
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
-import java.util.stream.Stream
 import kotlin.random.Random
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
+import org.junit.jupiter.api.extension.ExtendWith
 
 @ExtendWith(MockKExtension::class)
 class PairingTest {
@@ -54,6 +59,7 @@ class PairingTest {
         every { files.readByes("byes.txt") } returns byes
         every { files.writeByes("byes.txt", any()) } returns Unit
         every { files.writePlayers("players.txt", any()) } returns Unit
+        every { files.appendPlayer("players.txt", any()) } returns Unit
     }
 
     @AfterEach
@@ -67,31 +73,13 @@ class PairingTest {
     @DisplayName("Adding and Removing Players")
     @TestInstance(TestInstance.Lifecycle.PER_CLASS)
     inner class PlayerTests {
-        lateinit var pairing: Pairing
-
-        @MockK
-        lateinit var files: Files
-
-        private lateinit var players: List<Player>
-
         @BeforeEach
         fun setUp() {
             players = listOf(
                 Player(32, "Bob", "Robertson"),
-                Player(9, "Amy", status = "out")
+                Player(9, "Amy", status = "out", chipCount = 0)
             )
             every { files.readPlayers("players.txt") } returns players.toMutableList()
-            every { files.readRounds("rounds.txt") } returns emptyList()
-            every { files.readByes("byes.txt") } returns emptyList()
-            every { files.appendPlayer("players.txt", any()) } returns Unit
-            every { files.writePlayers("players.txt", any()) } returns Unit
-        }
-
-        @AfterEach
-        fun tearDown() {
-            System.setIn(standardIn)
-            System.setOut(standardOut)
-            clearAllMocks()
         }
 
         @Test
@@ -104,20 +92,21 @@ class PairingTest {
         }
 
         @Test
-        fun `can list all players from a file`() {
+        fun `can list all players from a file and report the total chip count`() {
             val outputStream = ByteArrayOutputStream()
             System.setOut(PrintStream(outputStream))
-            val commandWithQuit = "l\nq\n"
-            val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
+            val command = "l\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
             System.setIn(inputStream)
             pairing = Pairing(files)
             pairing.inputLoop()
             assertEquals(
                 """
             > STILL IN
-            32 Bob Robertson
+            32 Bob Robertson 10
             OUT
-            9 Amy 
+            9 Amy  0
+            TOTAL CHIPS: 10
             > 
                 """.trimIndent(),
                 outputStream.toString()
@@ -126,8 +115,8 @@ class PairingTest {
 
         @Test
         fun `Can add a player to the list`() {
-            val commandWithQuit = "a Kent Beck\nq\n"
-            val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
+            val command = "a Kent Beck\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
             System.setIn(inputStream)
             pairing = Pairing(files)
             pairing.inputLoop()
@@ -145,8 +134,8 @@ class PairingTest {
 
         @Test
         fun `Can mark a player 'out'`() {
-            val commandWithQuit = "d 32\nq\n"
-            val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
+            val command = "d 32\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
             System.setIn(inputStream)
             pairing = Pairing(files)
             pairing.inputLoop()
@@ -172,8 +161,8 @@ class PairingTest {
                 Pair(2, 5)
             ))
             val expectedRoundList = mutableListOf(expectedRound)
-            val commandWithQuit = "r\nq\n"
-            System.setIn(ByteArrayInputStream(commandWithQuit.toByteArray()))
+            val command = "r\nq\n"
+            System.setIn(ByteArrayInputStream(command.toByteArray()))
             every { random.nextInt(4) } returns 2
             every { random.nextInt(3) } returns 1
             every { random.nextInt(2) } returns 0
@@ -192,8 +181,8 @@ class PairingTest {
                 Pair(4, 3),
                 Pair(2, 5)
             ))
-            val commandWithQuit = "r\nq\n"
-            System.setIn(ByteArrayInputStream(commandWithQuit.toByteArray()))
+            val command = "r\nq\n"
+            System.setIn(ByteArrayInputStream(command.toByteArray()))
             every { random.nextInt(4) } returns 2
             every { random.nextInt(3) } returns 1
             every { random.nextInt(2) } returns 0
@@ -212,8 +201,8 @@ class PairingTest {
                 Pair(4, 3),
                 Pair(2, 6)
             ))
-            val commandWithQuit = "r\nq\n"
-            System.setIn(ByteArrayInputStream(commandWithQuit.toByteArray()))
+            val command = "r\nq\n"
+            System.setIn(ByteArrayInputStream(command.toByteArray()))
             every { random.nextInt(5) } returns 3
             every { random.nextInt(4) } returns 2
             every { random.nextInt(3) } returns 1
@@ -328,7 +317,7 @@ class PairingTest {
             var uniquePairs: MutableSet<Pair<Int, Int>>
             pairing.rounds.forEach { r ->
                 uniquePairs = createUniquePairs(pairing.rounds[0])
-                println("Number of unique pairs, round 1: %d".format(uniquePairs.size))
+                println("Number of unique pairs, round %d: %d".format(r.id, uniquePairs.size))
                 assertTrue(uniquePairs.size == 3)
             }
             println("Number of total unique pairs: %d".format(totalUniquePairs.size))
@@ -389,13 +378,99 @@ class PairingTest {
     }
 
     @Nested
+    @DisplayName("Command line")
+    @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+    inner class CommandLineTests {
+
+        @AfterEach
+        fun tearDown() {
+            Settings.resetDefaults()
+        }
+
+        @Test
+        fun `command line arguments can be blank`() {
+            Pairing.parseCommandLine(emptyArray())
+            assertEquals(10, Settings.chipValue)
+            assertEquals(10, Settings.buyInChipCount)
+        }
+
+        @Test
+        fun `unrecognized command line arguments prints usage`() {
+            val outputStream = ByteArrayOutputStream()
+            System.setOut(PrintStream(outputStream))
+            Pairing.parseCommandLine(arrayOf("bob", "mary"))
+            assertEquals("Usage: pairing [--chipValue=chipValue] [--chipCount=startingChipCount]\n",
+                outputStream.toString()
+            )
+        }
+
+        @Test
+        fun `can change the chip value with --chipValue`() {
+            Pairing.parseCommandLine(arrayOf("--chipValue=35"))
+            assertEquals(35, Settings.chipValue)
+            assertEquals(10, Settings.buyInChipCount)
+        }
+
+        @Test
+        fun `can change the chip value with -v`() {
+            Pairing.parseCommandLine(arrayOf("-v=35"))
+            assertEquals(35, Settings.chipValue)
+            assertEquals(10, Settings.buyInChipCount)
+        }
+
+        @Test
+        fun `can change the starting chip count with --chipCount`() {
+            Pairing.parseCommandLine(arrayOf("--chipCount=35"))
+            assertEquals(10, Settings.chipValue)
+            assertEquals(35, Settings.buyInChipCount)
+        }
+
+        @Test
+        fun `can change the chip value with -c`() {
+            Pairing.parseCommandLine(arrayOf("-c=35"))
+            assertEquals(10, Settings.chipValue)
+            assertEquals(35, Settings.buyInChipCount)
+        }
+
+        @Test
+        fun `can change both parameters`() {
+            Pairing.parseCommandLine(arrayOf("--chipCount=35", "--chipValue=50"))
+            assertEquals(50, Settings.chipValue)
+            assertEquals(35, Settings.buyInChipCount)
+        }
+
+        @Test
+        fun `can change both parameters with shorthand notation`() {
+            Pairing.parseCommandLine(arrayOf("-c=35", "-v=50"))
+            assertEquals(50, Settings.chipValue)
+            assertEquals(35, Settings.buyInChipCount)
+        }
+    }
+
+    @Nested
     @DisplayName("Chip Counts and Buy-backs")
     @TestInstance(TestInstance.Lifecycle.PER_CLASS)
     inner class MoneyTests {
         @Test
+        fun `on load, players start with the default number of chips`() {
+            val expectedPlayers = listOf(
+                Player(2, "Bob", "Robertson", chipCount=10),
+                Player(3, "Bill", "Carpenter", chipCount=10),
+                Player(4, "Mary", "Smith", chipCount=10),
+                Player(5, "Betty", "Smythe", chipCount=10),
+                Player(9, "Amy", status = "out", chipCount=10)
+            )
+            pairing = Pairing(files)
+            verify {
+                files.readPlayers("players.txt")
+                assertEquals(expectedPlayers, pairing.playerList)
+            }
+        }
+
+        @Test
         fun `A player can buy back in`() {
-            val commandWithQuit = "b 9\nq\n"
-            val inputStream = ByteArrayInputStream(commandWithQuit.toByteArray())
+            val command = "b 9\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
             System.setIn(inputStream)
             pairing = Pairing(files)
             pairing.inputLoop()
@@ -408,5 +483,61 @@ class PairingTest {
             )
             assertEquals(expectedPlayerList, pairing.playerList)
         }
+
+        @Test
+        fun `A player can report their chip count`() {
+            val command = "c 4 15\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
+            System.setIn(inputStream)
+            val expectedPlayerList = listOf(
+                Player(2, "Bob", "Robertson"),
+                Player(3, "Bill", "Carpenter"),
+                Player(4, "Mary", "Smith", chipCount=15),
+                Player(5, "Betty", "Smythe"),
+                Player(9, "Amy", status = "out")
+            )
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(expectedPlayerList, pairing.playerList)
+        }
+        
+        @Test
+        fun `List players reports the total chip count`() {
+            val command = "l\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
+            System.setIn(inputStream)
+            val outputStream = ByteArrayOutputStream()
+            System.setOut(PrintStream(outputStream))
+            players.forEach { p -> p.chipCount = 20 }
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(
+                """
+            > STILL IN
+            2 Bob Robertson 20
+            3 Bill Carpenter 20
+            4 Mary Smith 20
+            5 Betty Smythe 20
+            OUT
+            9 Amy  20
+            TOTAL CHIPS: 100
+            > 
+                """.trimIndent(),
+                outputStream.toString()
+            )
+        }
+
+        @Test
+        fun `Two paired players must report balancing counts`() {
+        }
+
+        @Test
+        fun `A player with no chips left is out of the tournament`() {
+        }
+
+        @Test
+        fun `Each round reports the chip counts`() {
+        }
+
     }
 }

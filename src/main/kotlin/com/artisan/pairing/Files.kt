@@ -7,9 +7,15 @@ class Files {
     fun readPlayers(fileName: String = "players.txt"): List<Player> {
         val players = mutableListOf<Player>()
         File("files", fileName).forEachLine {
-            val chunks = it.split(",")
-            if (chunks.size == 4) {
-                players.add(Player(chunks[0].toInt(), chunks[1], chunks[2], chunks[3]))
+            val chunks = it.split(";")
+            if (chunks.size == 6) {
+                players.add(Player(
+                    chunks[0].toInt(),
+                    chunks[1],
+                    chunks[2],
+                    chunks[3],
+                    if (chunks[4].isNotEmpty()) chunks[4].split(",").map { p -> p.toInt() }.toMutableList() else mutableListOf(),
+                    chunks[5].toInt()))
             }
         }
         return players

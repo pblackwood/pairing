@@ -2,9 +2,10 @@ package com.artisan.pairing
 
 import kotlin.random.Random
 
-class Pairing(
+open class Pairing(
     private val files: Files = Files(),
-    private val random: Random = Random.Default) {
+    private val random: Random = Random.Default,
+) {
     lateinit var playerList: MutableList<Player>
     lateinit var rounds: MutableList<Round>
     lateinit var byes: MutableList<Int>
@@ -22,13 +23,33 @@ class Pairing(
     companion object {
         @JvmStatic
         fun main(args: Array<String>) {
-            Pairing().inputLoop()
+            val pairingApp = Pairing()
+            if (args.isNotEmpty()) {
+                parseCommandLine(args)
+            }
+            pairingApp.inputLoop()
+        }
+
+        fun parseCommandLine(args: Array<String>) {
+            Settings.resetDefaults()
+            for (arg in args) {
+                val argPair = arg.split("=")
+                when (argPair[0]) {
+                    in "--chipCount", "-c" -> Settings.buyInChipCount = argPair[1].toInt()
+                    in "--chipValue", "-v" -> Settings.chipValue = argPair[1].toInt()
+                    else -> {
+                        println("Usage: pairing [--chipValue=chipValue] [--chipCount=startingChipCount]")
+                        Settings.runOnLoad = false
+                        break
+                    }
+                }
+            }
         }
     }
 
     fun inputLoop() {
-        var waiting = true
-        do {
+        var running = Settings.runOnLoad
+        while (running) {
             print("> ")
             val command = readln()
             when (command.get(0)) {
@@ -37,20 +58,22 @@ class Pairing(
                 'd' -> removePlayer(command)
                 'b' -> reinstatePlayer(command)
                 'r' -> startRound()
-                'q' -> waiting = false
+                'c' -> chipCount(command)
+                'q' -> running = false
             }
-        } while (waiting)
+        }
     }
 
     private fun listPlayers() {
         println("STILL IN")
         playerList.filter { it.status == "in" }.forEach {
-            println("%d %s".format(it.id, it.fullName()))
+            println("%d %s %d".format(it.id, it.fullName(), it.chipCount))
         }
         println("OUT")
         playerList.filter { it.status == "out" }.forEach {
-            println("%d %s".format(it.id, it.fullName()))
+            println("%d %s %d".format(it.id, it.fullName(), it.chipCount))
         }
+        println("TOTAL CHIPS: %d".format(playerList.sumOf { p -> p.chipCount }))
     }
 
     private fun addPlayer(command: String) {
@@ -82,6 +105,18 @@ class Pairing(
         val player = playerList.find { it.id == id }
         if (player != null) {
             player.status = "in"
+            files.writePlayers(players = playerList)
+        }
+        listPlayers()
+    }
+
+    private fun chipCount(command: String) {
+        val cmd: List<String> = command.split(" +".toRegex())
+        val playerId: Int = cmd[1].toInt()
+        val player = playerList.find { it.id == playerId }
+        if (player != null) {
+            val count = cmd[2].toInt()
+            player.chipCount = count
             files.writePlayers(players = playerList)
         }
         listPlayers()
