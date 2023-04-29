@@ -37,6 +37,7 @@ open class Pairing(
                 when (argPair[0]) {
                     in "--chipCount", "-c" -> Settings.buyInChipCount = argPair[1].toInt()
                     in "--chipValue", "-v" -> Settings.chipValue = argPair[1].toInt()
+                    in "--fees", "-f" -> Settings.fees = argPair[1].toInt()
                     else -> {
                         println("Usage: pairing [--chipValue=chipValue] [--chipCount=startingChipCount]")
                         Settings.runOnLoad = false
@@ -52,28 +53,48 @@ open class Pairing(
         while (running) {
             print("> ")
             val command = readln()
-            when (command.get(0)) {
-                'l' -> listPlayers()
-                'a' -> addPlayer(command)
-                'd' -> removePlayer(command)
-                'b' -> reinstatePlayer(command)
-                'r' -> startRound()
-                'c' -> chipCount(command)
-                'q' -> running = false
+            if (command.length == 0) {
+                println()
+            }
+            else {
+                when (command.get(0)) {
+                    'l' -> listPlayers()
+                    'a' -> addPlayer(command)
+                    'd' -> removePlayer(command)
+                    'b' -> reinstatePlayer(command)
+                    'c' -> chipCount(command)
+                    'r' -> startRound(command)
+                    'f' -> finish()
+                    'p' -> listLastRound()
+                    'q' -> running = false
+                }
             }
         }
     }
 
+    private fun totalChipCount(): Int {
+        return playerList.sumOf { p -> p.chipCount }
+    }
+
+    private fun totalPot(): Int {
+        return totalChipCount() * Settings.chipValue
+    }
+
+    private fun netPot(): Int {
+        return totalPot() - Settings.fees
+    }
+
     private fun listPlayers() {
         println("STILL IN")
-        playerList.filter { it.status == "in" }.forEach {
-            println("%d %s %d".format(it.id, it.fullName(), it.chipCount))
+        playerList.filter { it.status == "in" }.forEach { p ->
+            println(p.details(withId = true))
         }
         println("OUT")
-        playerList.filter { it.status == "out" }.forEach {
-            println("%d %s %d".format(it.id, it.fullName(), it.chipCount))
+        playerList.filter { it.status == "out" }.forEach { p ->
+            println(p.details(withId = true))
         }
-        println("TOTAL CHIPS: %d".format(playerList.sumOf { p -> p.chipCount }))
+        println("TOTAL CHIPS: %d".format(totalChipCount()))
+        println("CURRENT ROUND: %s".format(if (rounds.size > 0) rounds.size.toString() else "NO ROUND"))
     }
 
     private fun addPlayer(command: String) {
@@ -83,7 +104,7 @@ open class Pairing(
         val player = Player(playerList.size + 1, first, last)
         playerList.add(player)
         files.appendPlayer(player = player)
-        listPlayers()
+        println(player.details())
     }
 
     private fun removePlayer(command: String) {
@@ -101,10 +122,14 @@ open class Pairing(
     }
 
     private fun reinstatePlayer(command: String) {
-        val id: Int = command.split(" +".toRegex())[1].toInt()
-        val player = playerList.find { it.id == id }
+        val cmd: List<String> = command.split(" +".toRegex())
+        val playerId: Int = cmd[1].toInt()
+        val player = playerList.find { it.id == playerId }
         if (player != null) {
             player.status = "in"
+            if (cmd.size > 2) {
+                player.chipCount = cmd[2].toInt()
+            }
             files.writePlayers(players = playerList)
         }
         listPlayers()
@@ -116,32 +141,56 @@ open class Pairing(
         val player = playerList.find { it.id == playerId }
         if (player != null) {
             val count = cmd[2].toInt()
-            player.chipCount = count
-            files.writePlayers(players = playerList)
+            if (count < 0) {
+                println("Chip count must be >= 0")
+            }
+            else {
+                player.chipCount = count
+                if (player.chipCount == 0) {
+                    player.status = "out"
+                }
+                files.writePlayers(players = playerList)
+                println(player.details())
+            }
         }
-        listPlayers()
     }
 
     private fun listRound(round: Round) {
         round.printRoundDetails(playerList)
     }
 
-    private fun listRounds() {
-        rounds.forEach { r ->
-            r.printRoundDetails(playerList)
+    private fun listLastRound() {
+        if (rounds.size > 0) {
+            listRound(rounds[rounds.size - 1])
         }
     }
 
-    private fun startRound() {
-        val round = Round(
-            id = rounds.size + 1,
-            playerIds = playerList.filter { it.status == "in" }.map { it.id }
-        )
-        round.byeId = if (isOdd(round.playerIds.size)) assignBye(round) else null
-        round.pairs = assignPairs(round)
-        rounds.add(round)
-        files.appendRound(round = round)
-        listRound(round)
+    private fun startRound(command: String) {
+        val cmd: List<String> = command.split(" +".toRegex())
+        if (cmd.size > 1) {
+            listRound(rounds[cmd[1].toInt() - 1])
+        }
+        else {
+            val round = Round(
+                id = rounds.size + 1,
+                playerIds = playerList.filter { it.status == "in" }.map { it.id }
+            )
+            round.byeId = if (isOdd(round.playerIds.size)) assignBye(round) else null
+            round.pairs = assignPairs(round)
+            rounds.add(round)
+            files.appendRound(round = round)
+            listRound(round)
+        }
+    }
+
+    private fun finish() {
+        println("FINAL TOTALS")
+        playerList.filter { it.status == "in" }.forEach { p ->
+            println(p.details(withMoney=true, moneyPercent=(netPot().toDouble() / totalPot())))
+        }
+        println("TOTAL CHIPS: %d".format(totalChipCount()))
+        println("TOTAL POT: $%d".format(totalPot()))
+        println("NET POT: $%d".format(netPot()))
     }
 
     private fun assignBye(round: Round): Int {

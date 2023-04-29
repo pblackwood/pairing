@@ -103,10 +103,11 @@ class PairingTest {
             assertEquals(
                 """
             > STILL IN
-            32 Bob Robertson 10
+            32 Bob Robertson (10)
             OUT
-            9 Amy  0
+            9 Amy  (0)
             TOTAL CHIPS: 10
+            CURRENT ROUND: NO ROUND
             > 
                 """.trimIndent(),
                 outputStream.toString()
@@ -123,7 +124,7 @@ class PairingTest {
             val player = Player(3, "Kent", "Beck")
             val expectedPlayerList = listOf(
                 Player(32, "Bob", "Robertson", "in"),
-                Player(9, "Amy", status = "out"),
+                Player(9, "Amy", status = "out", chipCount = 0),
                 Player(3, "Kent", "Beck")
             )
             verify { files.readPlayers("players.txt") }
@@ -140,8 +141,8 @@ class PairingTest {
             pairing = Pairing(files)
             pairing.inputLoop()
             val expectedPlayerList = listOf(
-                Player(32, "Bob", "Robertson", "out"),
-                Player(9, "Amy", status = "out"),
+                Player(32, "Bob", "Robertson", "out", chipCount = 10),
+                Player(9, "Amy", status = "out", chipCount = 0),
             )
             verify { files.readPlayers("players.txt") }
             verify(exactly = 0) { files.appendPlayer("players.txt", any()) }
@@ -173,6 +174,35 @@ class PairingTest {
             verify(exactly = 1) { files.appendRound("rounds.txt", round = expectedRound) }
             verify(exactly = 0) { files.writeRounds("rounds.txt", expectedRoundList) }
             assertEquals(expectedRoundList, pairing.rounds)
+        }
+
+        @Test
+        fun `Can list any round`() {
+            val myRounds = listOf(
+                Round(1, listOf(2, 3, 4, 5), null, listOf(Pair(2, 3), Pair(4, 5))),
+                Round(2, listOf(2, 3, 4, 5), null, listOf(Pair(4, 5), Pair(2, 2)))
+            )
+            every { files.readRounds("rounds.txt") } returns myRounds
+            val command = "r 1\nq\n"
+            System.setIn(ByteArrayInputStream(command.toByteArray()))
+            val outputStream = ByteArrayOutputStream()
+            System.setOut(PrintStream(outputStream))
+            every { random.nextInt(4) } returns 2
+            every { random.nextInt(3) } returns 1
+            every { random.nextInt(2) } returns 0
+            pairing = Pairing(files, random)
+            pairing.inputLoop()
+            assertEquals(
+                """
+                > Round 1
+                NO BYE
+                PAIRS:
+                2 Bob Robertson (10) vs 3 Bill Carpenter (10)
+                4 Mary Smith (10) vs 5 Betty Smythe (10)
+                > 
+                """.trimIndent(),
+                outputStream.toString()
+            )
         }
 
         @Test
@@ -392,6 +422,19 @@ class PairingTest {
             Pairing.parseCommandLine(emptyArray())
             assertEquals(10, Settings.chipValue)
             assertEquals(10, Settings.buyInChipCount)
+            assertEquals(0, Settings.fees)
+        }
+
+        @Test
+        fun `command line arguments can be reset to the defaults`() {
+            Pairing.parseCommandLine(arrayOf("--chipCount=35", "--chipValue=50", "--fees=100"))
+            assertEquals(50, Settings.chipValue)
+            assertEquals(35, Settings.buyInChipCount)
+            assertEquals(100, Settings.fees)
+            Settings.resetDefaults()
+            assertEquals(10, Settings.chipValue)
+            assertEquals(10, Settings.buyInChipCount)
+            assertEquals(0, Settings.fees)
         }
 
         @Test
@@ -409,6 +452,7 @@ class PairingTest {
             Pairing.parseCommandLine(arrayOf("--chipValue=35"))
             assertEquals(35, Settings.chipValue)
             assertEquals(10, Settings.buyInChipCount)
+            assertEquals(0, Settings.fees)
         }
 
         @Test
@@ -416,6 +460,7 @@ class PairingTest {
             Pairing.parseCommandLine(arrayOf("-v=35"))
             assertEquals(35, Settings.chipValue)
             assertEquals(10, Settings.buyInChipCount)
+            assertEquals(0, Settings.fees)
         }
 
         @Test
@@ -423,27 +468,47 @@ class PairingTest {
             Pairing.parseCommandLine(arrayOf("--chipCount=35"))
             assertEquals(10, Settings.chipValue)
             assertEquals(35, Settings.buyInChipCount)
+            assertEquals(0, Settings.fees)
         }
 
         @Test
-        fun `can change the chip value with -c`() {
+        fun `can change the starting chip count with -c`() {
             Pairing.parseCommandLine(arrayOf("-c=35"))
             assertEquals(10, Settings.chipValue)
             assertEquals(35, Settings.buyInChipCount)
+            assertEquals(0, Settings.fees)
         }
 
         @Test
-        fun `can change both parameters`() {
-            Pairing.parseCommandLine(arrayOf("--chipCount=35", "--chipValue=50"))
-            assertEquals(50, Settings.chipValue)
-            assertEquals(35, Settings.buyInChipCount)
+        fun `can change the room fees with --fees`() {
+            Pairing.parseCommandLine(arrayOf("--fees=85"))
+            assertEquals(10, Settings.chipValue)
+            assertEquals(10, Settings.buyInChipCount)
+            assertEquals(85, Settings.fees)
         }
 
         @Test
-        fun `can change both parameters with shorthand notation`() {
-            Pairing.parseCommandLine(arrayOf("-c=35", "-v=50"))
+        fun `can change the room fees with -f`() {
+            Pairing.parseCommandLine(arrayOf("-f=85"))
+            assertEquals(10, Settings.chipValue)
+            assertEquals(10, Settings.buyInChipCount)
+            assertEquals(85, Settings.fees)
+        }
+
+        @Test
+        fun `can change all parameters`() {
+            Pairing.parseCommandLine(arrayOf("--chipCount=35", "--chipValue=50", "--fees=100"))
             assertEquals(50, Settings.chipValue)
             assertEquals(35, Settings.buyInChipCount)
+            assertEquals(100, Settings.fees)
+        }
+
+        @Test
+        fun `can change all parameters with shorthand notation`() {
+            Pairing.parseCommandLine(arrayOf("-c=35", "-v=50", "-f=100"))
+            assertEquals(50, Settings.chipValue)
+            assertEquals(35, Settings.buyInChipCount)
+            assertEquals(100, Settings.fees)
         }
     }
 
@@ -451,6 +516,11 @@ class PairingTest {
     @DisplayName("Chip Counts and Buy-backs")
     @TestInstance(TestInstance.Lifecycle.PER_CLASS)
     inner class MoneyTests {
+        @AfterEach
+        fun tearDown() {
+            Settings.resetDefaults()
+        }
+
         @Test
         fun `on load, players start with the default number of chips`() {
             val expectedPlayers = listOf(
@@ -474,14 +544,17 @@ class PairingTest {
             System.setIn(inputStream)
             pairing = Pairing(files)
             pairing.inputLoop()
-            val expectedPlayerList = listOf(
-                Player(2, "Bob", "Robertson"),
-                Player(3, "Bill", "Carpenter"),
-                Player(4, "Mary", "Smith"),
-                Player(5, "Betty", "Smythe"),
-                Player(9, "Amy", status = "in")
-            )
-            assertEquals(expectedPlayerList, pairing.playerList)
+            assertEquals(Player(9, "Amy", status = "in"), pairing.playerList[4])
+        }
+
+        @Test
+        fun `A player can buy back in with chip count`() {
+            val command = "b 9 5\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
+            System.setIn(inputStream)
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(Player(9, "Amy", status = "in", chipCount = 5), pairing.playerList[4])
         }
 
         @Test
@@ -489,18 +562,34 @@ class PairingTest {
             val command = "c 4 15\nq\n"
             val inputStream = ByteArrayInputStream(command.toByteArray())
             System.setIn(inputStream)
-            val expectedPlayerList = listOf(
-                Player(2, "Bob", "Robertson"),
-                Player(3, "Bill", "Carpenter"),
-                Player(4, "Mary", "Smith", chipCount=15),
-                Player(5, "Betty", "Smythe"),
-                Player(9, "Amy", status = "out")
-            )
             pairing = Pairing(files)
             pairing.inputLoop()
-            assertEquals(expectedPlayerList, pairing.playerList)
+            assertEquals(Player(4, "Mary", "Smith", chipCount = 15), pairing.playerList[2])
         }
-        
+
+        @Test
+        fun `A player's chip count must not be negative`() {
+            val command = "c 4 -2\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
+            System.setIn(inputStream)
+            val outputStream = ByteArrayOutputStream()
+            System.setOut(PrintStream(outputStream))
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals("> Chip count must be >= 0\n> ", outputStream.toString())
+            assertEquals(Player(4, "Mary", "Smith"), pairing.playerList[2])
+        }
+
+        @Test
+        fun `A player who reports 0 chip count is out of the tournament`() {
+            val command = "c 4 0\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
+            System.setIn(inputStream)
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(Player(4, "Mary", "Smith", chipCount=0, status = "out"), pairing.playerList[2])
+        }
+
         @Test
         fun `List players reports the total chip count`() {
             val command = "l\nq\n"
@@ -514,13 +603,14 @@ class PairingTest {
             assertEquals(
                 """
             > STILL IN
-            2 Bob Robertson 20
-            3 Bill Carpenter 20
-            4 Mary Smith 20
-            5 Betty Smythe 20
+            2 Bob Robertson (20)
+            3 Bill Carpenter (20)
+            4 Mary Smith (20)
+            5 Betty Smythe (20)
             OUT
-            9 Amy  20
+            9 Amy  (20)
             TOTAL CHIPS: 100
+            CURRENT ROUND: NO ROUND
             > 
                 """.trimIndent(),
                 outputStream.toString()
@@ -528,16 +618,68 @@ class PairingTest {
         }
 
         @Test
-        fun `Two paired players must report balancing counts`() {
+        fun `Finish the tournament and report winnings`() {
+            val command = "f\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
+            System.setIn(inputStream)
+            val outputStream = ByteArrayOutputStream()
+            System.setOut(PrintStream(outputStream))
+            players = listOf(
+                Player(2, "Bob", "Robertson", chipCount=55),
+                Player(3, "Bill", "Carpenter", chipCount=79),
+                Player(4, "Mary", "Smith", chipCount=16),
+                Player(5, "Betty", "Smythe", "out", chipCount=0),
+                Player(9, "Amy", status = "out", chipCount=0)
+            )
+            every { files.readPlayers("players.txt") } returns players
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(
+                """
+            > FINAL TOTALS
+            Bob Robertson (55) = $550
+            Bill Carpenter (79) = $790
+            Mary Smith (16) = $160
+            TOTAL CHIPS: 150
+            TOTAL POT: $1500
+            NET POT: $1500
+            > 
+                """.trimIndent(),
+                outputStream.toString()
+            )
         }
 
         @Test
-        fun `A player with no chips left is out of the tournament`() {
+        fun `Finish the tournament and report winnings, including fees`() {
+            val command = "f\nq\n"
+            val inputStream = ByteArrayInputStream(command.toByteArray())
+            System.setIn(inputStream)
+            val outputStream = ByteArrayOutputStream()
+            System.setOut(PrintStream(outputStream))
+            players = listOf(
+                Player(2, "Bob", "Robertson", chipCount=55),
+                Player(3, "Bill", "Carpenter", chipCount=79),
+                Player(4, "Mary", "Smith", chipCount=16),
+                Player(5, "Betty", "Smythe", "out", chipCount=0),
+                Player(9, "Amy", status = "out", chipCount=0)
+            )
+            every { files.readPlayers("players.txt") } returns players
+            Settings.fees = 100
+            pairing = Pairing(files)
+            pairing.inputLoop()
+            assertEquals(
+                """
+            > FINAL TOTALS
+            Bob Robertson (55) = $513
+            Bill Carpenter (79) = $737
+            Mary Smith (16) = $149
+            TOTAL CHIPS: 150
+            TOTAL POT: $1500
+            NET POT: $1400
+            > 
+                """.trimIndent(),
+                outputStream.toString()
+            )
         }
-
-        @Test
-        fun `Each round reports the chip counts`() {
-        }
-
     }
 }

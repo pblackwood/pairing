@@ -19,13 +19,13 @@ data class Round (
     fun printRoundDetails(playerList: List<Player>) {
         val byePlayer: Player? = if (byeId == null) null else playerList.find { p -> p.id == byeId }
         println("Round %d".format(id))
-        println("Available players: %s".format(playerIds))
+//        println("Available players: %s".format(playerIds))
         println("%s".format(if (byePlayer == null) "NO BYE" else "BYE: %s".format(byePlayer.fullName())))
         println("PAIRS:")
         pairs?.forEach {
             println("%s vs %s".format(
-                playerList.find { p -> p.id == it.first }?.fullName(),
-                playerList.find { p -> p.id == it.second }?.fullName()
+                playerList.find { p -> p.id == it.first }?.details(withId = true),
+                playerList.find { p -> p.id == it.second }?.details(withId = true)
             ))
         }
     }

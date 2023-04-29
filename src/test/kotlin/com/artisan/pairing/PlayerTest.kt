@@ -30,4 +30,24 @@ class PlayerTest {
         player = Player(12, "Bob", "Robbie", "x")
         assertEquals("Bob Robbie", player.fullName())
     }
+
+    @Test
+    fun `A player has a details display`() {
+        Settings.chipValue = 10
+        player = Player(12, "Bob", "Robbie", "in", chipCount = 35)
+        assertEquals("Bob Robbie (35)", player.details())
+        assertEquals("12 Bob Robbie (35)", player.details(withId=true))
+        assertEquals("12 Bob Robbie (35) = $350", player.details(withId=true, withMoney=true, moneyPercent=1.0))
+        assertEquals("Bob Robbie (35) = $350", player.details(withMoney=true, moneyPercent=1.0))
+    }
+
+    @Test
+    fun `A player has a details display, allowing for fees`() {
+        Settings.chipValue = 20
+        player = Player(12, "Bob", "Robbie", "in", chipCount = 35)
+        assertEquals("Bob Robbie (35)", player.details())
+        assertEquals("12 Bob Robbie (35)", player.details(withId=true))
+        assertEquals("12 Bob Robbie (35) = $630", player.details(withId=true, withMoney=true, moneyPercent = .9))
+        assertEquals("Bob Robbie (35) = $630", player.details(withMoney=true, moneyPercent = .9))
+    }
 }
